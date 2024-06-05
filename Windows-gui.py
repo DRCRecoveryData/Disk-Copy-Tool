@@ -1,20 +1,20 @@
-import os
 import sys
+import os
+import ctypes
 import time
-from PyQt6.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QPushButton, QLabel,
-    QLineEdit, QFileDialog, QProgressBar, QTextEdit, QMessageBox, QComboBox, QHBoxLayout
-)
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
+import win32com.client
+from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QPushButton, QLabel, QLineEdit, 
+                             QFileDialog, QProgressBar, QTextEdit, QMessageBox, QComboBox, QHBoxLayout)
+from PyQt6.QtCore import QThread, pyqtSignal
 
-class DiskCopyWorker(QThread):
+class FileRepairWorker(QThread):
     progress_updated = pyqtSignal(int)
     log_updated = pyqtSignal(str)
-    copy_finished = pyqtSignal(str)
+    repair_finished = pyqtSignal(str)
 
-    def __init__(self, selected_disk, save_directory):
+    def __init__(self, reference_disk, save_directory):
         super().__init__()
-        self.selected_disk = selected_disk
+        self.reference_disk = reference_disk
         self.save_directory = save_directory
 
     def run(self):
@@ -22,128 +22,112 @@ class DiskCopyWorker(QThread):
             self.log_updated.emit("Starting disk copy process...")
 
             block_size = 256 * 512  # 256 sectors * 512 bytes per sector
-            disk_size = os.path.getsize(self.selected_disk)
+            disk_size = get_disk_size(self.reference_disk)
+            if disk_size == 0:
+                raise Exception("Unable to determine the disk size.")
             total_sectors = disk_size // 512
 
-            save_file_name = os.path.basename(self.selected_disk).replace(' ', '_').replace('/', '_') + ".img"
+            save_file_name = f"{os.path.basename(self.reference_disk).replace('/', '_')}.img"
             save_file_path = os.path.join(self.save_directory, save_file_name)
 
             total_read = 0
-            current_sector = 0
             sectors_per_block = block_size // 512
 
             start_time = time.time()
-            with open(self.selected_disk, 'rb') as disk_file, open(save_file_path, 'wb') as img_file:
-                while True:
-                    block = disk_file.read(block_size)
-                    if not block:
-                        break
+            with open(save_file_path, 'wb') as img_file:
+                for block, total_read, current_sector in read_physical_disk(self.reference_disk, block_size):
                     img_file.write(block)
-                    total_read += len(block)
-                    current_sector += sectors_per_block
-
+                    progress = (total_read / disk_size) * 100
                     elapsed_time = time.time() - start_time
-                    if elapsed_time > 0:
-                        speed = total_read / elapsed_time
-                        progress = (total_read / disk_size) * 100
-                        remaining_seconds = (disk_size - total_read) / speed if speed > 0 else 0
+                    speed = total_read / elapsed_time if elapsed_time > 0 else 0
+                    remaining_time = (disk_size - total_read) / speed if speed > 0 else 0
 
-                        self.progress_updated.emit(int(progress))
-                        self.log_updated.emit(
-                            f"Progress: {progress:.2f}% | Speed: {self.format_speed(speed)} | "
-                            f"Sectors: {current_sector}/{total_sectors} | "
-                            f"ETA: {self.format_time(remaining_seconds)}"
-                        )
+                    self.progress_updated.emit(int(progress))
+                    self.log_updated.emit(
+                        f"Progress: {progress:.2f}% | Speed: {format_speed(speed)} | "
+                        f"Sectors: {current_sector}/{total_sectors} | ETA: {format_time(remaining_time)}"
+                    )
 
-            self.copy_finished.emit(f"Disk {self.selected_disk} copied to {save_file_path} successfully.")
+            self.repair_finished.emit("Disk copy process completed successfully.")
         except Exception as e:
-            self.copy_finished.emit(f"An error occurred: {e}")
+            self.repair_finished.emit(f"An error occurred: {e}")
 
-    def format_speed(self, bytes_per_second):
-        """Format the speed to be human-readable."""
-        units = ["B/s", "KB/s", "MB/s", "GB/s"]
-        speed = bytes_per_second
-        unit = units[0]
-        for u in units:
-            if speed < 1024:
-                unit = u
-                break
-            speed /= 1024
-        return f"{speed:.2f} {unit}"
-
-    def format_time(self, seconds):
-        """Format seconds into HH:MM:SS format."""
-        hours, remainder = divmod(seconds, 3600)
-        minutes, seconds = divmod(remainder, 60)
-        return f"{int(hours):02}:{int(minutes):02}:{int(seconds):02}"
-
-class DiskCopyApp(QWidget):
+class FileRepairApp(QWidget):
     def __init__(self):
         super().__init__()
 
         self.setWindowTitle("Disk Copy Tool")
-        self.setGeometry(100, 100, 600, 400)
+        self.setGeometry(100, 100, 400, 400)
 
         layout = QVBoxLayout()
 
-        self.header_label = QLabel("Disk Copy Tool")
-        self.header_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self.header_label)
-
-        self.credit_label = QLabel("Credit: Development by DRC Lab/ Nguyen Vu Ha +84903408066 Ha Noi, Viet Nam")
-        self.credit_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self.credit_label)
-
-        self.disk_combo_label = QLabel("Select a physical disk to copy:")
-        layout.addWidget(self.disk_combo_label)
-
-        self.disk_combo = QComboBox()
-        layout.addWidget(self.disk_combo)
-
+        self.reference_label = QLabel("Reference Disk:")
+        self.reference_disk_combo = QComboBox()
         self.refresh_button = QPushButton("Refresh")
+        self.refresh_button.setObjectName("refreshButton")
+        self.refresh_button.setFixedSize(100, 25)
         self.refresh_button.clicked.connect(self.load_physical_disks)
-        layout.addWidget(self.refresh_button)
 
-        self.save_directory_label = QLabel("Enter the directory path to save the image file:")
-        layout.addWidget(self.save_directory_label)
+        reference_layout = QHBoxLayout()
+        reference_layout.addWidget(self.reference_disk_combo)
+        reference_layout.addWidget(self.refresh_button)
 
+        self.encrypted_label = QLabel("Save Directory:")
         self.save_directory_edit = QLineEdit()
-        layout.addWidget(self.save_directory_edit)
-
-        self.browse_button = QPushButton("Browse")
-        self.browse_button.clicked.connect(self.browse_save_directory)
-        layout.addWidget(self.browse_button)
+        self.save_directory_browse_button = QPushButton("Browse", self)
+        self.save_directory_browse_button.setObjectName("browseButton")
+        self.save_directory_browse_button.clicked.connect(self.browse_save_directory)
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
-        layout.addWidget(self.progress_bar)
+        self.progress_bar.setValue(0)
 
         self.log_box = QTextEdit()
         self.log_box.setReadOnly(True)
-        layout.addWidget(self.log_box)
 
-        self.copy_button = QPushButton("Copy Disk")
-        self.copy_button.clicked.connect(self.copy_disk)
-        layout.addWidget(self.copy_button)
+        self.repair_button = QPushButton("Copy Disk", self)
+        self.repair_button.setObjectName("blueButton")
+        self.repair_button.clicked.connect(self.copy_disk)
+
+        layout.addWidget(self.reference_label)
+        layout.addLayout(reference_layout)
+        layout.addWidget(self.encrypted_label)
+        layout.addWidget(self.save_directory_edit)
+        layout.addWidget(self.save_directory_browse_button)
+        layout.addWidget(self.progress_bar)
+        layout.addWidget(self.log_box)
+        layout.addWidget(self.repair_button)
 
         self.setLayout(layout)
+
+        self.setStyleSheet("""
+        #browseButton, #blueButton, #refreshButton {
+            background-color: #3498db;
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            font-size: 16px;
+            border-radius: 4px;
+        }
+        #browseButton:hover, #blueButton:hover, #refreshButton:hover {
+            background-color: #2980b9;
+        }
+        #refreshButton {
+            padding: 5px 10px;
+            font-size: 14px;
+        }
+        """)
 
         self.load_physical_disks()
 
     def load_physical_disks(self):
-        self.disk_combo.clear()
-        disks = self.list_physical_disks()
+        self.reference_disk_combo.clear()
+        disks = list_physical_disks()
+        if not disks:
+            QMessageBox.critical(self, "Error", "No physical disks found.")
+            return
         for device_id, model in disks:
-            self.disk_combo.addItem(f"{device_id} ({model})")
-
-    def list_physical_disks(self):
-        """List all physical disks available on the system."""
-        physical_disks = []
-        wmi = win32com.client.Dispatch("WbemScripting.SWbemLocator")
-        service = wmi.ConnectServer(".", "root\\cimv2")
-        for disk in service.ExecQuery("SELECT DeviceID, Model FROM Win32_DiskDrive"):
-            physical_disks.append((disk.DeviceID, disk.Model))
-        return physical_disks
+            self.reference_disk_combo.addItem(f"{device_id} ({model})", device_id)
 
     def browse_save_directory(self):
         save_directory = QFileDialog.getExistingDirectory(self, "Select Save Directory")
@@ -151,20 +135,21 @@ class DiskCopyApp(QWidget):
             self.save_directory_edit.setText(save_directory)
 
     def copy_disk(self):
-        selected_disk_index = self.disk_combo.currentIndex()
-        selected_disk_model = self.disk_combo.currentText()
-        selected_disk = self.disk_combo.itemData(selected_disk_index)
-
+        reference_disk_index = self.reference_disk_combo.currentIndex()
+        reference_disk = self.reference_disk_combo.itemData(reference_disk_index)
         save_directory = self.save_directory_edit.text()
 
-        if not os.path.isdir(save_directory):
-            QMessageBox.critical(self, "Error", "The specified directory does not exist.")
+        if not reference_disk:
+            self.show_message("Error", "No reference disk selected.")
+            return
+        if not os.path.exists(save_directory):
+            self.show_message("Error", "Save directory does not exist.")
             return
 
-        self.worker = DiskCopyWorker(selected_disk, save_directory)
+        self.worker = FileRepairWorker(reference_disk, save_directory)
         self.worker.progress_updated.connect(self.update_progress)
         self.worker.log_updated.connect(self.update_log)
-        self.worker.copy_finished.connect(self.copy_finished)
+        self.worker.repair_finished.connect(self.repair_finished)
         self.worker.start()
 
     def update_progress(self, value):
@@ -173,15 +158,87 @@ class DiskCopyApp(QWidget):
     def update_log(self, message):
         self.log_box.append(message)
 
-    def copy_finished(self, message):
-        QMessageBox.information(self, "Copy Finished", message)
+    def repair_finished(self, message):
+        self.show_message("Success", message)
 
-def main():
+    def show_message(self, title, message):
+        QMessageBox.information(self, title, message)
+
+def list_physical_disks():
+    """List all physical disks available on the system."""
+    physical_disks = []
+    wmi = win32com.client.Dispatch("WbemScripting.SWbemLocator")
+    service = wmi.ConnectServer(".", "root\\cimv2")
+    for disk in service.ExecQuery("SELECT DeviceID, Model FROM Win32_DiskDrive"):
+        physical_disks.append((disk.DeviceID, disk.Model))
+    return physical_disks
+
+def get_disk_size(disk):
+    """Get the size of the physical disk in bytes."""
+    wmi = win32com.client.Dispatch("WbemScripting.SWbemLocator")
+    service = wmi.ConnectServer(".", "root\\cimv2")
+    for d in service.ExecQuery("SELECT Size, DeviceID FROM Win32_DiskDrive"):
+        if d.DeviceID == disk:
+            return int(d.Size)
+    return 0
+
+def read_physical_disk(disk, block_size):
+    """Read the physical disk in blocks of specified size."""
+    handle = ctypes.windll.kernel32.CreateFileW(
+        f"\\\\.\\{disk}",
+        0x80000000,  # GENERIC_READ
+        0x00000001 | 0x00000002,  # FILE_SHARE_READ | FILE_SHARE_WRITE
+        None,
+        0x00000003,  # OPEN_EXISTING
+        0,
+        None
+    )
+
+    if handle == ctypes.c_void_p(-1).value:
+        raise Exception(f"Failed to open disk {disk}")
+
+    read_buffer = ctypes.create_string_buffer(block_size)
+    read = ctypes.c_ulong(0)
+    total_read = 0
+    current_sector = 0
+    sectors_per_block = block_size // 512
+
+    while True:
+        success = ctypes.windll.kernel32.ReadFile(
+            handle,
+            read_buffer,
+            block_size,
+            ctypes.byref(read),
+            None
+        )
+        if not success or read.value == 0:
+            break
+        total_read += read.value
+        current_sector += sectors_per_block
+        yield read_buffer.raw[:read.value], total_read, current_sector
+
+    ctypes.windll.kernel32.CloseHandle(handle)
+
+def format_speed(bytes_per_second):
+    """Format the speed to be human-readable."""
+    units = ["B/s", "KB/s", "MB/s", "GB/s"]
+    speed = bytes_per_second
+    unit = units[0]
+    for u in units:
+        if speed < 1024:
+            unit = u
+            break
+        speed /= 1024
+    return f"{speed:.2f} {unit}"
+
+def format_time(seconds):
+    """Format seconds into HH:MM:SS format."""
+    hours, remainder = divmod(seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    return f"{int(hours):02}:{int(minutes):02}:{int(seconds):02}"
+
+if __name__ == '__main__':
     app = QApplication(sys.argv)
-    window = DiskCopyApp()
+    window = FileRepairApp()
     window.show()
     sys.exit(app.exec())
-
-if __name__ == "__main__":
-    main()
-
