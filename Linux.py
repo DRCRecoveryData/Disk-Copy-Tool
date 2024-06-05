@@ -10,10 +10,11 @@ init(autoreset=True)
 def list_physical_disks():
     """List all physical disks available on the system."""
     physical_disks = []
-    for disk in psutil.disk_partitions(all=True):
-        if 'sd' in disk.device or 'nvme' in disk.device:
+    for disk in psutil.disk_partitions(all=False):
+        if disk.device.startswith('/dev/sd') or disk.device.startswith('/dev/nvme'):
             physical_disks.append(disk.device)
     return physical_disks
+
 
 def get_disk_size(disk):
     """Get the size of the physical disk in bytes."""
