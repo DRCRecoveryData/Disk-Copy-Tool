@@ -2,6 +2,7 @@ import ctypes
 import os
 import win32com.client
 import time
+from concurrent.futures import ThreadPoolExecutor
 from colorama import init, Fore, Back, Style
 import pyfiglet
 
@@ -26,8 +27,8 @@ def get_disk_size(disk):
             return int(d.Size)
     return 0
 
-def read_physical_disk(disk, block_size):
-    """Read the physical disk in blocks of specified size."""
+def read_physical_disk(disk, block_size, offset):
+    """Read a block of specified size from the physical disk at the given offset."""
     handle = ctypes.windll.kernel32.CreateFileW(
         f"\\\\.\\{disk}",
         0x80000000,  # GENERIC_READ
@@ -41,27 +42,26 @@ def read_physical_disk(disk, block_size):
     if handle == ctypes.c_void_p(-1).value:
         raise Exception(f"Failed to open disk {disk}")
 
+    # Move the file pointer to the correct position
+    ctypes.windll.kernel32.SetFilePointer(handle, offset, None, 0)
+
     read_buffer = ctypes.create_string_buffer(block_size)
     read = ctypes.c_ulong(0)
-    total_read = 0
-    current_sector = 0
-    sectors_per_block = block_size // 512
 
-    while True:
-        success = ctypes.windll.kernel32.ReadFile(
-            handle,
-            read_buffer,
-            block_size,
-            ctypes.byref(read),
-            None
-        )
-        if not success or read.value == 0:
-            break
-        total_read += read.value
-        current_sector += sectors_per_block
-        yield read_buffer.raw[:read.value], total_read, current_sector
+    success = ctypes.windll.kernel32.ReadFile(
+        handle,
+        read_buffer,
+        block_size,
+        ctypes.byref(read),
+        None
+    )
 
     ctypes.windll.kernel32.CloseHandle(handle)
+
+    if not success or read.value == 0:
+        return None, 0
+
+    return read_buffer.raw[:read.value], read.value
 
 def format_speed(bytes_per_second):
     """Format the speed to be human-readable."""
@@ -130,21 +130,30 @@ def main():
 
     total_sectors = disk_size // 512
 
+    def copy_block(offset):
+        return read_physical_disk(selected_disk, block_size, offset)
+
     # Copy the disk to the image file
     try:
         with open(save_file_path, 'wb') as img_file:
             start_time = time.time()
-            for block, total_read, current_sector in read_physical_disk(selected_disk, block_size):
-                img_file.write(block)
-                current_time = time.time()
-                elapsed_time = current_time - start_time
-                if elapsed_time > 0:
-                    speed = total_read / elapsed_time
-                    progress = (total_read / disk_size) * 100
-                    remaining_seconds = (disk_size - total_read) / speed if speed > 0 else 0
-                    print(f"\r{Fore.CYAN}Progress: {progress:.2f}% | Speed: {format_speed(speed)} | "
-                          f"Sectors: {current_sector}/{total_sectors} | "
-                          f"ETA: {format_time(remaining_seconds)}", end='')
+            total_read = 0
+            with ThreadPoolExecutor() as executor:
+                futures = {executor.submit(copy_block, offset): offset for offset in range(0, disk_size, block_size)}
+                for future in futures:
+                    block, read_size = future.result()
+                    if block is not None:
+                        img_file.write(block)
+                        total_read += read_size
+                    current_time = time.time()
+                    elapsed_time = current_time - start_time
+                    if elapsed_time > 0:
+                        speed = total_read / elapsed_time
+                        progress = (total_read / disk_size) * 100
+                        remaining_seconds = (disk_size - total_read) / speed if speed > 0 else 0
+                        print(f"\r{Fore.CYAN}Progress: {progress:.2f}% | Speed: {format_speed(speed)} | "
+                              f"Sectors: {total_read // 512}/{total_sectors} | "
+                              f"ETA: {format_time(remaining_seconds)}", end='')
         print(Fore.GREEN + f"\nDisk {selected_disk} copied to {save_file_path} successfully.")
     except Exception as e:
         print(Fore.RED + f"An error occurred: {e}")
