@@ -3,6 +3,7 @@ import os
 import ctypes
 import time
 import win32com.client
+from concurrent.futures import ThreadPoolExecutor
 from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QPushButton, QLabel, QLineEdit,
                              QFileDialog, QProgressBar, QTextEdit, QMessageBox, QComboBox, QHBoxLayout)
 from PyQt6.QtCore import QThread, pyqtSignal
@@ -12,7 +13,7 @@ class FileRepairWorker(QThread):
     progress_updated = pyqtSignal(int)
     log_updated = pyqtSignal(str)
     repair_finished = pyqtSignal(str)
-    paused_changed = pyqtSignal(bool)  # Signal to indicate pause/resume state change
+    paused_changed = pyqtSignal(bool)
 
     def __init__(self, reference_disk, save_file_path, block_size):
         super().__init__()
@@ -35,8 +36,10 @@ class FileRepairWorker(QThread):
             sectors_per_block = self.block_size // 512
 
             start_time = time.time()
-            with open(self.save_file_path, 'wb') as img_file:
-                for block, total_read, current_sector in read_physical_disk(self.reference_disk, self.block_size):
+            with open(self.save_file_path, 'wb') as img_file, ThreadPoolExecutor(max_workers=4) as executor:
+                futures = {executor.submit(read_physical_disk, self.reference_disk, offset, self.block_size): offset for offset in range(0, disk_size, self.block_size)}
+
+                for future in futures:
                     if self.stop_requested:
                         self.log_updated.emit("Disk copy process stopped.")
                         break
@@ -49,17 +52,22 @@ class FileRepairWorker(QThread):
                     if self.stop_requested:
                         break
 
-                    img_file.write(block)
-                    progress = (total_read / disk_size) * 100
-                    elapsed_time = time.time() - start_time
-                    speed = total_read / elapsed_time if elapsed_time > 0 else 0
-                    remaining_time = (disk_size - total_read) / speed if speed > 0 else 0
+                    result = future.result()
+                    if result:
+                        block, read_size, current_sector = result
+                        img_file.write(block)
+                        total_read += read_size
 
-                    self.progress_updated.emit(int(progress))
-                    self.log_updated.emit(
-                        f"Progress: {progress:.2f}% | Speed: {format_speed(speed)} | "
-                        f"Sectors: {current_sector}/{total_sectors} | ETA: {format_time(remaining_time)}"
-                    )
+                        progress = (total_read / disk_size) * 100
+                        elapsed_time = time.time() - start_time
+                        speed = total_read / elapsed_time if elapsed_time > 0 else 0
+                        remaining_time = (disk_size - total_read) / speed if speed > 0 else 0
+
+                        self.progress_updated.emit(int(progress))
+                        self.log_updated.emit(
+                            f"Progress: {progress:.2f}% | Speed: {format_speed(speed)} | "
+                            f"Sectors: {current_sector}/{total_sectors} | ETA: {format_time(remaining_time)}"
+                        )
 
             if not self.stop_requested:
                 self.repair_finished.emit("Disk copy process completed successfully.")
@@ -183,25 +191,22 @@ class FileRepairApp(QWidget):
         reference_disk = self.reference_disk_combo.itemData(reference_disk_index)
         combo_text = self.reference_disk_combo.currentText()
 
-        # Extracting model from combo box text
         start_index = combo_text.find('(')
         end_index = combo_text.rfind(')')
         if start_index != -1 and end_index != -1:
             model = combo_text[start_index + 1:end_index].strip()
         else:
-            model = "UnknownModel"  # Default value if extraction fails
+            model = "UnknownModel"
 
-        # Replace invalid characters in model name for file name
         invalid_chars = ['\\', '/', ':', '*', '?', '"', '<', '>', '|']
         for char in invalid_chars:
             model = model.replace(char, '_')
 
-        # Replace spaces with underscores
         model = model.replace(' ', '_')
 
         save_directory = self.save_directory_edit.text()
         block_size_sectors = int(self.block_size_combo.currentText())
-        block_size = block_size_sectors * 512  # Convert sectors to bytes
+        block_size = block_size_sectors * 512
 
         if not reference_disk:
             self.show_message("Error", "No reference disk selected.")
@@ -250,7 +255,6 @@ class FileRepairApp(QWidget):
 
 
 def list_physical_disks():
-    """List all physical disks available on the system."""
     physical_disks = []
     wmi = win32com.client.Dispatch("WbemScripting.SWbemLocator")
     service = wmi.ConnectServer(".", "root\\cimv2")
@@ -269,7 +273,7 @@ def get_disk_size(disk):
     return 0
 
 
-def read_physical_disk(disk, block_size):
+def read_physical_disk(disk, offset, block_size):
     """Read the physical disk in blocks of specified size."""
     handle = ctypes.windll.kernel32.CreateFileW(
         f"\\\\.\\{disk}",
@@ -284,13 +288,11 @@ def read_physical_disk(disk, block_size):
     if handle == ctypes.c_void_p(-1).value:
         raise Exception(f"Failed to open disk {disk}")
 
-    read_buffer = ctypes.create_string_buffer(block_size)
-    read = ctypes.c_ulong(0)
-    total_read = 0
-    current_sector = 0
-    sectors_per_block = block_size // 512
-
-    while True:
+    try:
+        ctypes.windll.kernel32.SetFilePointer(handle, offset, None, 0)
+        read_buffer = ctypes.create_string_buffer(block_size)
+        read = ctypes.c_ulong(0)
+        
         success = ctypes.windll.kernel32.ReadFile(
             handle,
             read_buffer,
@@ -298,13 +300,14 @@ def read_physical_disk(disk, block_size):
             ctypes.byref(read),
             None
         )
-        if not success or read.value == 0:
-            break
-        total_read += read.value
-        current_sector += sectors_per_block
-        yield read_buffer.raw[:read.value], total_read, current_sector
 
-    ctypes.windll.kernel32.CloseHandle(handle)
+        if not success:
+            raise Exception(f"Failed to read from disk {disk} at offset {offset}")
+
+        return read_buffer.raw[:read.value], read.value, offset // 512
+
+    finally:
+        ctypes.windll.kernel32.CloseHandle(handle)
 
 
 def format_speed(bytes_per_second):
@@ -332,3 +335,4 @@ if __name__ == '__main__':
     window = FileRepairApp()
     window.show()
     sys.exit(app.exec())
+
