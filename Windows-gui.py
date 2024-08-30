@@ -289,10 +289,21 @@ def read_physical_disk(disk, offset, block_size):
         raise Exception(f"Failed to open disk {disk}")
 
     try:
-        ctypes.windll.kernel32.SetFilePointer(handle, offset, None, 0)
+        # Use SetFilePointerEx for large offsets
+        offset_high = ctypes.c_longlong(offset)
+        success = ctypes.windll.kernel32.SetFilePointerEx(
+            handle, 
+            offset_high, 
+            None, 
+            0  # FILE_BEGIN
+        )
+
+        if not success:
+            raise Exception(f"Failed to set file pointer at offset {offset}")
+
         read_buffer = ctypes.create_string_buffer(block_size)
         read = ctypes.c_ulong(0)
-        
+
         success = ctypes.windll.kernel32.ReadFile(
             handle,
             read_buffer,
@@ -301,15 +312,14 @@ def read_physical_disk(disk, offset, block_size):
             None
         )
 
-        if not success:
+        if not success or read.value == 0:
             raise Exception(f"Failed to read from disk {disk} at offset {offset}")
 
         return read_buffer.raw[:read.value], read.value, offset // 512
 
     finally:
         ctypes.windll.kernel32.CloseHandle(handle)
-
-
+      
 def format_speed(bytes_per_second):
     """Format the speed to be human-readable."""
     units = ["B/s", "KB/s", "MB/s", "GB/s"]
