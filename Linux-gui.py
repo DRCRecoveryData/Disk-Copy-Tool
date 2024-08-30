@@ -59,7 +59,7 @@ class FileRepairApp(QWidget):
     def __init__(self):
         super().__init__()
 
-        self.setWindowTitle("WAV Repair Tool")
+        self.setWindowTitle("Disk Copy Tool")
         self.setGeometry(100, 100, 400, 400)
 
         layout = QVBoxLayout()
@@ -75,7 +75,7 @@ class FileRepairApp(QWidget):
         reference_layout.addWidget(self.reference_disk_combo)
         reference_layout.addWidget(self.refresh_button)
 
-        self.encrypted_label = QLabel("Save Directory:")
+        self.save_directory_label = QLabel("Save Directory:")
         self.save_directory_edit = QLineEdit()
         self.save_directory_browse_button = QPushButton("Browse", self)
         self.save_directory_browse_button.setObjectName("browseButton")
@@ -88,18 +88,18 @@ class FileRepairApp(QWidget):
         self.log_box = QTextEdit()
         self.log_box.setReadOnly(True)
 
-        self.repair_button = QPushButton("Copy Disk", self)
-        self.repair_button.setObjectName("blueButton")
-        self.repair_button.clicked.connect(self.copy_disk)
+        self.copy_button = QPushButton("Copy Disk", self)
+        self.copy_button.setObjectName("blueButton")
+        self.copy_button.clicked.connect(self.copy_disk)
 
         layout.addWidget(self.reference_label)
         layout.addLayout(reference_layout)
-        layout.addWidget(self.encrypted_label)
+        layout.addWidget(self.save_directory_label)
         layout.addWidget(self.save_directory_edit)
         layout.addWidget(self.save_directory_browse_button)
         layout.addWidget(self.progress_bar)
         layout.addWidget(self.log_box)
-        layout.addWidget(self.repair_button)
+        layout.addWidget(self.copy_button)
 
         self.setLayout(layout)
 
@@ -169,35 +169,26 @@ def list_physical_disks():
     """List all physical disks available on the system."""
     physical_disks = []
     for disk in psutil.disk_partitions(all=False):
-        if disk.device.startswith('/dev/sd') or disk.device.startswith('/dev/nvme'):
+        if disk.device.startswith('/dev/sd') or disk.device.startswith('/dev/nvme') or disk.device.startswith('/dev/mmcblk'):
             physical_disks.append(disk.device)
     return physical_disks
 
 def get_disk_size(disk):
     """Get the size of the physical disk in bytes."""
-    disk_usage = psutil.disk_usage(disk)
-    return disk_usage.total
-
-def read_physical_disk(disk, block_size):
-    """Read the physical disk in blocks of specified size."""
     try:
-        with open(disk, 'rb') as disk_file:
-            while True:
-                block = disk_file.read(block_size)
-                if not block:
-                    break
-                yield block
+        with open(disk, 'rb') as f:
+            f.seek(0, os.SEEK_END)
+            return f.tell()
     except Exception as e:
-        raise Exception(f"Failed to read disk {disk}: {e}")
+        print(f"Error determining disk size: {e}")
+        return 0
 
 def format_speed(bytes_per_second):
     """Format the speed to be human-readable."""
     units = ["B/s", "KB/s", "MB/s", "GB/s"]
     speed = bytes_per_second
-    unit = units[0]
-    for u in units:
+    for unit in units:
         if speed < 1024:
-            unit = u
             break
         speed /= 1024
     return f"{speed:.2f} {unit}"
@@ -213,4 +204,3 @@ if __name__ == '__main__':
     window = FileRepairApp()
     window.show()
     sys.exit(app.exec())
-
