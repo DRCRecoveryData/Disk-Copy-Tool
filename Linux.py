@@ -11,15 +11,19 @@ def list_physical_disks():
     """List all physical disks available on the system."""
     physical_disks = []
     for disk in psutil.disk_partitions(all=False):
-        if disk.device.startswith('/dev/sd') or disk.device.startswith('/dev/nvme'):
+        if disk.device.startswith('/dev/sd') or disk.device.startswith('/dev/nvme') or disk.device.startswith('/dev/mmcblk'):
             physical_disks.append(disk.device)
     return physical_disks
 
-
 def get_disk_size(disk):
     """Get the size of the physical disk in bytes."""
-    disk_usage = psutil.disk_usage(disk)
-    return disk_usage.total
+    try:
+        with open(disk, 'rb') as f:
+            f.seek(0, os.SEEK_END)
+            return f.tell()
+    except Exception as e:
+        print(Fore.RED + f"Unable to determine the disk size: {e}")
+        return 0
 
 def read_physical_disk(disk, block_size):
     """Read the physical disk in blocks of specified size."""
@@ -71,7 +75,12 @@ def main():
         print(f"{Fore.GREEN}{idx + 1}: {device}")
 
     # Get the user's choice
-    choice = int(input(Fore.YELLOW + "Enter the number of the disk: ")) - 1
+    try:
+        choice = int(input(Fore.YELLOW + "Enter the number of the disk: ")) - 1
+    except ValueError:
+        print(Fore.RED + "Invalid input. Please enter a valid number.")
+        return
+
     if choice < 0 or choice >= len(disks):
         print(Fore.RED + "Invalid choice.")
         return
@@ -95,7 +104,6 @@ def main():
     # Get the disk size
     disk_size = get_disk_size(selected_disk)
     if disk_size == 0:
-        print(Fore.RED + "Unable to determine the disk size.")
         return
 
     total_sectors = disk_size // 512
