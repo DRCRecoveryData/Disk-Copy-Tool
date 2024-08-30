@@ -42,8 +42,13 @@ def read_physical_disk(disk, block_size, offset):
     if handle == ctypes.c_void_p(-1).value:
         raise Exception(f"Failed to open disk {disk}")
 
-    # Move the file pointer to the correct position
-    ctypes.windll.kernel32.SetFilePointer(handle, offset, None, 0)
+    # Move the file pointer to the correct position using SetFilePointerEx
+    offset_high = ctypes.c_long(offset >> 32)
+    offset_low = ctypes.c_long(offset & 0xFFFFFFFF)
+    result = ctypes.windll.kernel32.SetFilePointerEx(handle, offset_low, ctypes.byref(offset_high), 0)
+    if not result:
+        ctypes.windll.kernel32.CloseHandle(handle)
+        raise Exception(f"Failed to set file pointer for disk {disk}")
 
     read_buffer = ctypes.create_string_buffer(block_size)
     read = ctypes.c_ulong(0)
