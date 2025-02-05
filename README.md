@@ -1,7 +1,5 @@
 # Disk Copy Tool
 
-![Screenshot from 2024-06-05 02-37-04](https://github.com/DRCRecoveryData/Disk-Copy-Tool/assets/85211068/bb1692a5-9992-4449-9171-d77194374087)
-
 Disk Copy Tool is a Python script designed to copy the contents of a physical disk to an image file. It supports both Windows and Linux operating systems.
 
 ## Features
