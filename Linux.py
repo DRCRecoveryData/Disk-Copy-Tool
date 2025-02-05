@@ -7,6 +7,10 @@ from colorama import init, Fore
 # Initialize colorama
 init(autoreset=True)
 
+def is_root():
+    """Check if the script is running as root (admin)"""
+    return os.geteuid() == 0
+
 def list_physical_disks():
     """List all physical disks available on the system."""
     physical_disks = []
@@ -56,6 +60,11 @@ def format_time(seconds):
     return f"{int(hours):02}:{int(minutes):02}:{int(seconds):02}"
 
 def main():
+    # Check if running as root
+    if not is_root():
+        print(Fore.RED + "This script requires root privileges to access disks.")
+        return
+
     # ASCII art header
     header = pyfiglet.figlet_format("Disk Copy Tool")
     print(Fore.YELLOW + header)
