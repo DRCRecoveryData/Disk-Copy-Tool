@@ -1,10 +1,32 @@
 import ctypes
 import os
+import sys
 import win32com.client
 import time
 from concurrent.futures import ThreadPoolExecutor
 from colorama import init, Fore, Back, Style
 import pyfiglet
+
+# Check if the script is running as admin
+def is_admin():
+    try:
+        return ctypes.windll.shell32.IsUserAnAdmin() != 0
+    except:
+        return False
+
+# If not admin, relaunch the script as admin
+def run_as_admin():
+    if sys.version_info[0] < 3:
+        executable = sys.executable.encode(sys.getfilesystemencoding())
+    else:
+        executable = sys.executable
+
+    ctypes.windll.shell32.ShellExecuteW(None, "runas", executable, ' '.join(sys.argv), None, 1)
+
+# If not running as admin, re-launch as admin
+if not is_admin():
+    run_as_admin()
+    sys.exit()
 
 # Initialize colorama
 init(autoreset=True)
