@@ -1,7 +1,7 @@
-# 🔍 NIST-Compliant-Drive-Imager 🖥️
+# 🔍 NIST-Disk-Imager 🖥️
 
 ## 📌 Overview  
-**NIST-Compliant-Drive-Imager** is a **Windows-based** tool designed to create **forensically sound** disk images in compliance with **NIST** standards. It supports the creation of disk images in both **E01** and **DD** formats and includes **hash validation** (MD5, SHA1, SHA256) to ensure data integrity.  
+**NIST-Disk-Imager** is a **Windows-based** tool designed to create **forensically sound** disk images in compliance with **NIST** standards. It supports the creation of disk images in both **E01** and **DD** formats and includes **hash validation** (MD5, SHA1, SHA256) to ensure data integrity.  
 
 ✅ **Write Protection**: Enable/disable via Windows registry  
 ✅ **Fast Imaging**: Adjustable block sizes for optimal performance  
@@ -47,7 +47,7 @@ This tool is fully compliant with **NIST Special Publication 800-86**, which pro
 ## 📥 Installation  
 ### 1️⃣ Clone the repository  
 ```bash
-git clone https://github.com/DRCRecoveryData/NIST-Compliant-Drive-Imager.git
+git clone https://github.com/DRCRecoveryData/NIST-Disk-Imager.git
 
 2️⃣ Install dependencies
 
