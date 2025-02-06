@@ -3,21 +3,19 @@ import os
 import sys
 import win32com.client
 import time
-import hashlib
 from concurrent.futures import ThreadPoolExecutor
 from colorama import init, Fore, Back, Style
 import pyfiglet
-import pyewf
-import subprocess
+import winreg  # For registry access
 
-# Check if the script is running as admin
+# Function to check if running as admin
 def is_admin():
     try:
         return ctypes.windll.shell32.IsUserAnAdmin() != 0
     except:
         return False
 
-# If not admin, relaunch the script as admin
+# Function to run script as admin
 def run_as_admin():
     if sys.version_info[0] < 3:
         executable = sys.executable.encode(sys.getfilesystemencoding())
@@ -26,16 +24,39 @@ def run_as_admin():
 
     ctypes.windll.shell32.ShellExecuteW(None, "runas", executable, ' '.join(sys.argv), None, 1)
 
-# If not running as admin, re-launch as admin
-if not is_admin():
-    run_as_admin()
-    sys.exit()
+# Function to enable or disable write protection via the registry
+def set_write_protect(enable=True):
+    try:
+        # Access the registry key for write protection (on USB drives)
+        registry_path = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer"
+        registry_key = winreg.HKEY_LOCAL_MACHINE
+        with winreg.OpenKey(registry_key, registry_path, 0, winreg.KEY_WRITE) as key:
+            if enable:
+                winreg.SetValueEx(key, "WriteProtect", 0, winreg.REG_DWORD, 1)
+                print(Fore.GREEN + "Write protection enabled.")
+            else:
+                winreg.DeleteValue(key, "WriteProtect")
+                print(Fore.RED + "Write protection disabled.")
+        return True
+    except Exception as e:
+        print(Fore.RED + f"Failed to modify registry: {e}")
+        return False
 
-# Initialize colorama
-init(autoreset=True)
+# Prompt for enabling/disabling write protection
+def prompt_write_protect():
+    choice = input(Fore.YELLOW + "Enable write protection (Y/N)? ").strip().lower()
+    if choice == 'y':
+        if not set_write_protect(enable=True):
+            print(Fore.RED + "Failed to enable write protection.")
+    elif choice == 'n':
+        if not set_write_protect(enable=False):
+            print(Fore.RED + "Failed to disable write protection.")
+    else:
+        print(Fore.RED + "Invalid choice, write protection not changed.")
 
-# List all physical disks
+# Function to list physical disks
 def list_physical_disks():
+    """List all physical disks available on the system."""
     physical_disks = []
     wmi = win32com.client.Dispatch("WbemScripting.SWbemLocator")
     service = wmi.ConnectServer(".", "root\\cimv2")
@@ -43,8 +64,9 @@ def list_physical_disks():
         physical_disks.append((disk.DeviceID, disk.Model))
     return physical_disks
 
-# Get disk size
+# Function to get disk size
 def get_disk_size(disk):
+    """Get the size of the physical disk in bytes."""
     wmi = win32com.client.Dispatch("WbemScripting.SWbemLocator")
     service = wmi.ConnectServer(".", "root\\cimv2")
     for d in service.ExecQuery("SELECT Size, DeviceID FROM Win32_DiskDrive"):
@@ -52,42 +74,9 @@ def get_disk_size(disk):
             return int(d.Size)
     return 0
 
-# Calculate hash of the drive
-def get_drive_hash(disk):
-    hash_md5 = hashlib.md5()
-    hash_sha1 = hashlib.sha1()
-    hash_sha256 = hashlib.sha256()
-
-    handle = ctypes.windll.kernel32.CreateFileW(
-        f"\\\\.\\{disk}",
-        0x80000000,  # GENERIC_READ
-        0x00000001 | 0x00000002,  # FILE_SHARE_READ | FILE_SHARE_WRITE
-        None,
-        0x00000003,  # OPEN_EXISTING
-        0,
-        None
-    )
-
-    if handle == ctypes.c_void_p(-1).value:
-        raise Exception(f"Failed to open disk {disk}")
-
-    buffer = ctypes.create_string_buffer(4096)
-    bytes_read = ctypes.c_ulong(0)
-
-    while ctypes.windll.kernel32.ReadFile(handle, buffer, len(buffer), ctypes.byref(bytes_read), None):
-        if bytes_read.value == 0:
-            break
-        data = buffer.raw[:bytes_read.value]
-        hash_md5.update(data)
-        hash_sha1.update(data)
-        hash_sha256.update(data)
-
-    ctypes.windll.kernel32.CloseHandle(handle)
-
-    return hash_md5.hexdigest(), hash_sha1.hexdigest(), hash_sha256.hexdigest()
-
-# Copy block from physical disk
+# Function to read physical disk
 def read_physical_disk(disk, block_size, offset):
+    """Read a block of specified size from the physical disk at the given offset."""
     handle = ctypes.windll.kernel32.CreateFileW(
         f"\\\\.\\{disk}",
         0x80000000,  # GENERIC_READ
@@ -101,6 +90,7 @@ def read_physical_disk(disk, block_size, offset):
     if handle == ctypes.c_void_p(-1).value:
         raise Exception(f"Failed to open disk {disk}")
 
+    # Move the file pointer to the correct position using SetFilePointerEx
     offset_high = ctypes.c_long(offset >> 32)
     offset_low = ctypes.c_long(offset & 0xFFFFFFFF)
     result = ctypes.windll.kernel32.SetFilePointerEx(handle, offset_low, ctypes.byref(offset_high), 0)
@@ -126,8 +116,9 @@ def read_physical_disk(disk, block_size, offset):
 
     return read_buffer.raw[:read.value], read.value
 
-# Format speed in human-readable format
+# Function to format speed for human readability
 def format_speed(bytes_per_second):
+    """Format the speed to be human-readable."""
     units = ["B/s", "KB/s", "MB/s", "GB/s"]
     speed = bytes_per_second
     unit = units[0]
@@ -138,13 +129,14 @@ def format_speed(bytes_per_second):
         speed /= 1024
     return f"{speed:.2f} {unit}"
 
-# Format time in HH:MM:SS format
+# Function to format time as HH:MM:SS
 def format_time(seconds):
+    """Format seconds into HH:MM:SS format."""
     hours, remainder = divmod(seconds, 3600)
     minutes, seconds = divmod(remainder, 60)
     return f"{int(hours):02}:{int(minutes):02}:{int(seconds):02}"
 
-# Main process
+# Function to perform the disk imaging
 def main():
     # ASCII art header
     header = pyfiglet.figlet_format("Disk Copy Tool")
@@ -152,6 +144,9 @@ def main():
 
     # Show credit line
     print(Fore.CYAN + "Credit: Development by DRC Lab/ Nguyen Vu Ha +84903408066 Ha Noi, Viet Nam")
+
+    # Ask user about write protection
+    prompt_write_protect()
 
     # List all physical disks
     disks = list_physical_disks()
@@ -172,13 +167,6 @@ def main():
 
     selected_disk, disk_model = disks[choice]
 
-    # Calculate hash of the original drive
-    original_hashes = get_drive_hash(selected_disk)
-    print(Fore.CYAN + "Original Drive Hashes:")
-    print(f"MD5: {original_hashes[0]}")
-    print(f"SHA1: {original_hashes[1]}")
-    print(f"SHA256: {original_hashes[2]}")
-
     # Prompt for the directory path to save the image file
     directory_path = input(Fore.YELLOW + "Enter the directory path to save the image file: ")
 
@@ -187,13 +175,17 @@ def main():
         print(Fore.RED + "The specified directory does not exist.")
         return
 
-    # Choose the image format (E01 or DD)
-    image_format = input(Fore.YELLOW + "Choose the output format (E01/DD): ").strip().lower()
+    # Ask for the image format (E01 or DD)
+    img_format = input(Fore.YELLOW + "Choose image format (E01/DD): ").strip().lower()
+    if img_format not in ['e01', 'dd']:
+        print(Fore.RED + "Invalid format. Exiting.")
+        return
 
-    save_file_name = f"{disk_model.replace(' ', '_').replace('/', '_')}.{image_format}"
+    # Create the full save file path with the disk model as the file name
+    save_file_name = f"{disk_model.replace(' ', '_').replace('/', '_')}.{img_format}"
     save_file_path = os.path.join(directory_path, save_file_name)
 
-    block_size = 8 * 1024 * 1024  # 8 MB blocks
+    block_size = 8 * 1024 * 1024  # 8MB block size
 
     # Get the disk size
     disk_size = get_disk_size(selected_disk)
@@ -206,7 +198,7 @@ def main():
     def copy_block(offset):
         return read_physical_disk(selected_disk, block_size, offset)
 
-    # Create the image file
+    # Copy the disk to the image file
     try:
         with open(save_file_path, 'wb') as img_file:
             start_time = time.time()
@@ -227,32 +219,18 @@ def main():
                         print(f"\r{Fore.CYAN}Progress: {progress:.2f}% | Speed: {format_speed(speed)} | "
                               f"Sectors: {total_read // 512}/{total_sectors} | "
                               f"ETA: {format_time(remaining_seconds)}", end='')
-
         print(Fore.GREEN + f"\nDisk {selected_disk} copied to {save_file_path} successfully.")
-
-        # After imaging, hash the copied image file
-        print(Fore.CYAN + "Hashed Image File:")
-        with open(save_file_path, 'rb') as img_file:
-            img_hash_md5 = hashlib.md5()
-            img_hash_sha1 = hashlib.sha1()
-            img_hash_sha256 = hashlib.sha256()
-
-            while chunk := img_file.read(4096):
-                img_hash_md5.update(chunk)
-                img_hash_sha1.update(chunk)
-                img_hash_sha256.update(chunk)
-
-            print(f"MD5: {img_hash_md5.hexdigest()}")
-            print(f"SHA1: {img_hash_sha1.hexdigest()}")
-            print(f"SHA256: {img_hash_sha256.hexdigest()}")
-
-        # Compare the hashes
-        if original_hashes == (img_hash_md5.hexdigest(), img_hash_sha1.hexdigest(), img_hash_sha256.hexdigest()):
-            print(Fore.GREEN + "Hashes match! The disk image is verified successfully.")
-        else:
-            print(Fore.RED + "Hashes do not match. The image is corrupted.")
     except Exception as e:
         print(Fore.RED + f"An error occurred: {e}")
 
 if __name__ == "__main__":
+    # If not running as admin, re-launch as admin
+    if not is_admin():
+        run_as_admin()
+        sys.exit()
+
+    # Initialize colorama
+    init(autoreset=True)
+
+    # Run the disk imaging process
     main()
