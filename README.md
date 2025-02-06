@@ -38,8 +38,7 @@ This tool is fully compliant with **NIST Special Publication 800-86**, which pro
 - 🖥️ **Windows 10+**  
 - 🐍 **Python 3.6+**  
 - 📦 Required Python libraries:  
-  - `pywin32`  
-  - `pyewf`  
+  - `pywin32`   
   - `colorama`  
   - `pyfiglet`  
 
