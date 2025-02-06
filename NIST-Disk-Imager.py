@@ -6,6 +6,9 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from colorama import init, Fore, Back, Style
 import pyfiglet
+import winreg
+import signal
+import threading
 
 # Check if the script is running as admin
 def is_admin():
@@ -22,6 +25,48 @@ def run_as_admin():
         executable = sys.executable
 
     ctypes.windll.shell32.ShellExecuteW(None, "runas", executable, ' '.join(sys.argv), None, 1)
+
+# Enable or disable write protection
+def set_write_protect(enable):
+    reg_paths = [
+        r"SOFTWARE\Policies\Microsoft\Windows\RemovableStorageDevices\{53f5630d-b6bf-11d0-94f2-00a0c91efb8b}",
+        r"System\ControlSet001\Control\StorageDevicePolicies"
+    ]
+
+    try:
+        # Modifying first registry path
+        with winreg.CreateKey(winreg.HKEY_LOCAL_MACHINE, reg_paths[0]) as key:
+            if enable:
+                winreg.SetValueEx(key, "Deny_Write", 0, winreg.REG_DWORD, 1)
+            else:
+                winreg.DeleteValue(key, "Deny_Write")
+        
+        # Modifying second registry path
+        with winreg.CreateKey(winreg.HKEY_LOCAL_MACHINE, reg_paths[1]) as key:
+            if enable:
+                winreg.SetValueEx(key, "WriteProtect", 0, winreg.REG_DWORD, 1)
+            else:
+                winreg.DeleteValue(key, "WriteProtect")
+
+        return True
+    except FileNotFoundError:
+        return False
+    except Exception as e:
+        print(Fore.RED + f"Failed to modify registry: {e}")
+        return False
+
+# Handle termination or cancellation by the user to disable write protection
+def cleanup_on_exit():
+    print(Fore.YELLOW + "Disabling write protection...")
+    if set_write_protect(False):
+        print(Fore.GREEN + "USB Write-protect setting has been restored.")
+        print(Fore.CYAN + "\nPlease detach and re-attach USB drives for settings to take effect.")
+    else:
+        print(Fore.RED + "Failed to restore write protection setting.")
+
+# Register signal to call cleanup function when the task is canceled or interrupted
+signal.signal(signal.SIGINT, lambda signum, frame: cleanup_on_exit())  # For Ctrl+C
+signal.signal(signal.SIGTERM, lambda signum, frame: cleanup_on_exit())  # For external termination
 
 # If not running as admin, re-launch as admin
 if not is_admin():
@@ -116,6 +161,16 @@ def main():
     # Show credit line
     print(Fore.CYAN + "Credit: Development by DRC Lab/ Nguyen Vu Ha +84903408066 Ha Noi, Viet Nam")
 
+    # Ask user if they want to enable USB write protection
+    enable_write_blocker = input(Fore.YELLOW + "Do you want to enable USB Write-blocker? (yes/no): ").strip().lower()
+
+    if enable_write_blocker == 'yes':
+        print(Fore.YELLOW + "Enabling write protection for removable disks...")
+        if set_write_protect(True):
+            print(Fore.GREEN + "Write protection enabled.")
+        else:
+            print(Fore.RED + "Failed to enable write protection.")
+    
     # List all physical disks
     disks = list_physical_disks()
     if not disks:
@@ -187,3 +242,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+    # Disable write protection after the task is complete
+    cleanup_on_exit()
