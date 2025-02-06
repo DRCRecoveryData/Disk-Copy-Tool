@@ -1,113 +1,122 @@
-# NIST-Compliant-Drive-Imager
+🔍 NIST-Compliant-Drive-Imager 🖥️
 
-## Overview
-**NIST-Compliant-Drive-Imager** is a Windows-based tool designed to create forensically sound disk images in compliance with **NIST** standards. It supports the creation of disk images in both **E01** and **DD** formats and includes hash validation (MD5, SHA1, SHA256) to ensure data integrity. This tool incorporates the ability to enable or disable write protection via registry manipulation, in line with best practices for data preservation in forensic investigations.
+📌 Overview
 
-The tool is optimized for fast imaging with adjustable block sizes and provides detailed progress monitoring during the imaging process, including speed, estimated time of arrival (ETA), and sector count. It adheres to NIST guidelines, ensuring the security and reliability of the data collection process.
+NIST-Compliant-Drive-Imager is a Windows-based tool designed to create forensically sound disk images in compliance with NIST standards. It supports the creation of disk images in both E01 and DD formats and includes hash validation (MD5, SHA1, SHA256) to ensure data integrity.
 
-## NIST Compliance
-This tool is fully compliant with **NIST Special Publication 800-86**, which provides guidelines on the handling and acquisition of digital evidence. The tool follows the recommended procedures for:
-- Forensically sound data imaging.
-- Hash validation to verify image integrity.
-- Write protection to prevent modification of the source drive during imaging.
+✅ Write Protection: Enable/disable via Windows registry
+✅ Fast Imaging: Adjustable block sizes for optimal performance
+✅ Real-time Monitoring: Speed, ETA, sector count
 
-### NIST Special Publication 800-86:
-*"Guide to Integrating Forensic Techniques into Incident Response"* and related documents serve as the foundation for digital forensics compliance, ensuring best practices in data acquisition and integrity.
+This tool follows NIST guidelines to ensure secure and reliable forensic imaging.
 
-## Features
-- **Forensically Secure Imaging**: Create bit-by-bit copies of hard drives with MD5, SHA1, and SHA256 hash validation to ensure data integrity.
-- **NIST Compliance**: Fully aligned with NIST recommendations for forensically sound imaging practices.
-- **Windows Deployment**: Deployable on Windows operating systems without removing the physical hard drives.
-- **Write Protection Control**: Enable or disable write protection via Windows registry to secure the source drive during imaging.
-- **Multiple Formats**: Choose between **E01** (EnCase) or **DD** (raw disk image) formats for the disk image.
-- **Progress Monitoring**: Real-time updates of imaging progress, including speed, sector count, and ETA.
-- **Portable & Compact**: Designed for field use, offering portability and ease of use.
+🛡️ NIST Compliance
 
-## Requirements
-- **Windows 10** or later.
-- **Python 3.6+**.
-- Required Python libraries:
-  - `pywin32`
-  - `pyewf`
-  - `colorama`
-  - `pyfiglet`
+This tool is fully compliant with NIST Special Publication 800-86, which provides guidelines on handling and acquiring digital evidence. It follows best practices for:
 
-## Installation
-1. Clone the repository:
-    ```bash
-    git clone https://github.com/DRCRecoveryData/NIST-Compliant-Drive-Imager.git
-    ```
+🔹 Forensically sound data imaging
+🔹 Hash validation to verify image integrity
+🔹 Write protection to prevent modification of the source drive
 
-2. Install the required dependencies:
-    ```bash
-    pip install -r requirements.txt
-    ```
+📖 NIST Special Publication 800-86
 
-## Usage
+“Guide to Integrating Forensic Techniques into Incident Response” ensures compliance with best practices in digital forensics and data integrity.
 
-### 1. Run the script as Administrator
-To ensure proper access to physical disks and registry manipulation, it is necessary to run the tool as an administrator.
+⚡ Features
 
-```bash
+🖥️ Forensically Secure Imaging – Bit-by-bit copies with MD5, SHA1, SHA256 hash validation
+✅ NIST Compliance – Fully aligned with forensic best practices
+🪟 Windows Deployment – No need to remove physical hard drives
+🔒 Write Protection Control – Enable/disable write protection for source drive security
+📂 Multiple Formats – Supports E01 (EnCase) and DD (raw disk image)
+📊 Progress Monitoring – Speed, sector count, and ETA tracking
+🚀 Portable & Compact – Ideal for field use
+
+🔧 Requirements
+
+🖥️ Windows 10+
+🐍 Python 3.6+
+📦 Required Python libraries:
+	•	pywin32
+	•	pyewf
+	•	colorama
+	•	pyfiglet
+
+📥 Installation
+
+1️⃣ Clone the repository:
+
+git clone https://github.com/DRCRecoveryData/NIST-Compliant-Drive-Imager.git
+
+2️⃣ Install dependencies:
+
+pip install -r requirements.txt
+
+🚀 Usage
+
+1️⃣ Run as Administrator
+
+To ensure proper access to physical disks and registry manipulation, run the tool as Administrator:
+
 python disk-imager-tool.py
 
-2. Select the disk to image
+2️⃣ Select the Disk to Image
 
-You will be prompted to select the physical disk you wish to image from a list of available drives.
+The tool will list available physical drives for selection.
 
-3. Choose image format (E01 or DD)
+3️⃣ Choose Image Format (E01 or DD)
 
-After selecting the disk, you will be prompted to choose between E01 (EnCase) or DD (raw disk image) format for saving the disk image.
+Select the desired output format for saving the disk image.
 
-4. Enable/Disable Write Protection
+4️⃣ Enable/Disable Write Protection
 
-Before starting the imaging process, you can enable or disable write protection via registry manipulation to ensure no writes occur to the source drive.
+Prevent any writes to the source drive via Windows registry settings.
 
-5. Hash Validation
+5️⃣ Hash Validation
 
-After the disk image is created, the tool will calculate the MD5, SHA1, and SHA256 hashes of the original disk and the created image to ensure data integrity.
+After imaging, the tool will calculate:
+✅ MD5
+✅ SHA1
+✅ SHA256
+To ensure data integrity.
 
-6. Final Confirmation
+6️⃣ Final Confirmation
 
-Once the image creation is complete, the tool will compare the hashes of the original disk and the created image. If they match, the process is confirmed as successful.
+Hashes of the original disk and created image are compared to verify a successful imaging process.
 
-Example Workflow
-	1.	Run as admin:
+📝 Example Workflow
+
+1️⃣ Run as Admin:
 
 python disk_imager.py
 
+2️⃣ Select the Disk:
 
-	2.	Select the disk:
+1: \\.\PHYSICALDRIVE0 (Samsung SSD 860 EVO)  
+2: \\.\PHYSICALDRIVE1 (Seagate 1TB HDD)  
 
-1: \\.\PHYSICALDRIVE0 (Samsung SSD 860 EVO)
-2: \\.\PHYSICALDRIVE1 (Seagate 1TB HDD)
-
-
-	3.	Choose image format:
+3️⃣ Choose Image Format:
 
 Choose the output format (E01/DD): e01
 
-
-	4.	Enable/Disable Write Protection:
+4️⃣ Enable/Disable Write Protection:
 
 Enable Write Protection? (y/n): y
 
-
-	5.	Start imaging and monitor progress:
+5️⃣ Start Imaging & Monitor Progress:
 
 Progress: 45.67% | Speed: 100.00 MB/s | Sectors: 100000/1000000 | ETA: 00:10:00
 
+6️⃣ Confirm Image Integrity with Hash Validation:
 
-	6.	Confirm image integrity with hash validation:
+MD5: <calculated MD5 hash>  
+SHA1: <calculated SHA1 hash>  
+SHA256: <calculated SHA256 hash>  
 
-MD5: <calculated MD5 hash>
-SHA1: <calculated SHA1 hash>
-SHA256: <calculated SHA256 hash>
-```
+📜 License
 
-License
+⚠️ This tool is provided as-is, with no warranty or support.
+📜 You are free to modify and distribute it under the MIT license.
 
-This tool is provided as-is, with no warranty or support. You are free to modify and distribute it under the terms of the MIT license.
-
-Developed by: [Nguyen Vu Ha / DRC Lab]
-Contact: [hanaloginstruments@gmail.com]
+🛠️ Developed by: Nguyen Vu Ha / DRC Lab
+📧 Contact: hanaloginstruments@gmail.com
