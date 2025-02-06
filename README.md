@@ -114,6 +114,7 @@ Progress: 45.67% | Speed: 100.00 MB/s | Sectors: 100000/1000000 | ETA: 00:10:00
 MD5: <calculated MD5 hash>  
 SHA1: <calculated SHA1 hash>  
 SHA256: <calculated SHA256 hash>  
+```
 
 📜 License
 
