@@ -1,4 +1,14 @@
-verify image integrity.
+# NIST-Compliant-Drive-Imager
+
+## Overview
+**NIST-Compliant-Drive-Imager** is a Windows-based tool designed to create forensically sound disk images in compliance with **NIST** standards. It supports the creation of disk images in both **E01** and **DD** formats and includes hash validation (MD5, SHA1, SHA256) to ensure data integrity. This tool incorporates the ability to enable or disable write protection via registry manipulation, in line with best practices for data preservation in forensic investigations.
+
+The tool is optimized for fast imaging with adjustable block sizes and provides detailed progress monitoring during the imaging process, including speed, estimated time of arrival (ETA), and sector count. It adheres to NIST guidelines, ensuring the security and reliability of the data collection process.
+
+## NIST Compliance
+This tool is fully compliant with **NIST Special Publication 800-86**, which provides guidelines on the handling and acquisition of digital evidence. The tool follows the recommended procedures for:
+- Forensically sound data imaging.
+- Hash validation to verify image integrity.
 - Write protection to prevent modification of the source drive during imaging.
 
 ### NIST Special Publication 800-86:
