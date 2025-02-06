@@ -1,18 +1,8 @@
-# NIST-Compliant-Drive-Imager
-
-## Overview
-**NIST-Compliant-Drive-Imager** is a Windows-based tool designed to create forensically sound disk images in compliance with **NIST** standards. It supports the creation of disk images in both **E01** and **DD** formats and includes hash validation (MD5, SHA1, SHA256) to ensure data integrity. This tool incorporates the ability to enable or disable write protection via registry manipulation, in line with best practices for data preservation in forensic investigations.
-
-The tool is optimized for fast imaging with adjustable block sizes and provides detailed progress monitoring during the imaging process, including speed, estimated time of arrival (ETA), and sector count. It adheres to NIST guidelines, ensuring the security and reliability of the data collection process.
-
-## NIST Compliance
-This tool is fully compliant with **NIST Special Publication 800-101 Revision 1**, which provides guidelines on the handling and acquisition of digital evidence. The tool follows the recommended procedures for:
-- Forensically sound data imaging.
-- Hash validation to verify image integrity.
+verify image integrity.
 - Write protection to prevent modification of the source drive during imaging.
 
-### NIST Special Publication 800-101 Revision 1:
-*"Guidelines on Mobile Device Forensics"* and related documents serve as the foundation for digital forensics compliance, ensuring best practices in data acquisition and integrity.
+### NIST Special Publication 800-86:
+*"Guide to Integrating Forensic Techniques into Incident Response"* and related documents serve as the foundation for digital forensics compliance, ensuring best practices in data acquisition and integrity.
 
 ## Features
 - **Forensically Secure Imaging**: Create bit-by-bit copies of hard drives with MD5, SHA1, and SHA256 hash validation to ensure data integrity.
@@ -35,7 +25,7 @@ This tool is fully compliant with **NIST Special Publication 800-101 Revision 1*
 ## Installation
 1. Clone the repository:
     ```bash
-    git clone https://github.com/yourusername/NIST-Compliant-Drive-Imager.git
+    git clone https://github.com/DRCRecoveryData/NIST-Compliant-Drive-Imager.git
     ```
 
 2. Install the required dependencies:
@@ -112,11 +102,3 @@ This tool is provided as-is, with no warranty or support. You are free to modify
 
 Developed by: [Nguyen Vu Ha / DRC Lab]
 Contact: [hanaloginstruments@gmail.com]
-
-Key Updates:
-	•	NIST Compliance Reference: The README now includes a clear reference to NIST SP 800-101 Revision 1, ensuring that the tool adheres to NIST guidelines for forensically sound imaging.
-
-### Key Fixes:
-- **Compliance Reference**: The NIST compliance section was enhanced to specifically mention **NIST SP 800-101 Revision 1** and the tool’s alignment with best practices.
-- **Workflow and Features**: Added further details to guide users through the entire imaging process, emphasizing NIST compliance aspects like write protection and hash validation.
-- **Clearer Instructions**: The steps and commands are more structured for ease of understanding and usage.
