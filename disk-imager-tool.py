@@ -3,12 +3,9 @@ import os
 import sys
 import win32com.client
 import time
-import hashlib
 from concurrent.futures import ThreadPoolExecutor
 from colorama import init, Fore, Back, Style
 import pyfiglet
-import pyewf
-import subprocess
 
 # Check if the script is running as admin
 def is_admin():
@@ -34,8 +31,8 @@ if not is_admin():
 # Initialize colorama
 init(autoreset=True)
 
-# List all physical disks
 def list_physical_disks():
+    """List all physical disks available on the system."""
     physical_disks = []
     wmi = win32com.client.Dispatch("WbemScripting.SWbemLocator")
     service = wmi.ConnectServer(".", "root\\cimv2")
@@ -43,8 +40,8 @@ def list_physical_disks():
         physical_disks.append((disk.DeviceID, disk.Model))
     return physical_disks
 
-# Get disk size
 def get_disk_size(disk):
+    """Get the size of the physical disk in bytes."""
     wmi = win32com.client.Dispatch("WbemScripting.SWbemLocator")
     service = wmi.ConnectServer(".", "root\\cimv2")
     for d in service.ExecQuery("SELECT Size, DeviceID FROM Win32_DiskDrive"):
@@ -52,70 +49,8 @@ def get_disk_size(disk):
             return int(d.Size)
     return 0
 
-# Enable or disable write protection via registry
-def set_write_protect(enable):
-    reg_key = r"HKLM\SYSTEM\CurrentControlSet\Control\StorageDevicePolicies"
-    reg_value = "WriteProtect"
-
-    try:
-        if enable:
-            subprocess.run(['reg', 'add', reg_key, '/v', reg_value, '/t', 'REG_DWORD', '/d', '1', '/f'], check=True)
-            print(Fore.GREEN + "Write protection enabled.")
-        else:
-            subprocess.run(['reg', 'add', reg_key, '/v', reg_value, '/t', 'REG_DWORD', '/d', '0', '/f'], check=True)
-            print(Fore.GREEN + "Write protection disabled.")
-    except subprocess.CalledProcessError:
-        print(Fore.RED + "Error modifying the registry. Ensure you have admin privileges.")
-
-# Check current write protection status
-def check_write_protection():
-    reg_key = r"HKLM\SYSTEM\CurrentControlSet\Control\StorageDevicePolicies"
-    reg_value = "WriteProtect"
-    try:
-        output = subprocess.check_output(['reg', 'query', reg_key, '/v', reg_value], stderr=subprocess.PIPE)
-        if b'1' in output:
-            print(Fore.GREEN + "Write protection is enabled.")
-        else:
-            print(Fore.RED + "Write protection is disabled.")
-    except subprocess.CalledProcessError:
-        print(Fore.RED + "Write protection registry key not found.")
-
-# Calculate hash of the drive
-def get_drive_hash(disk):
-    hash_md5 = hashlib.md5()
-    hash_sha1 = hashlib.sha1()
-    hash_sha256 = hashlib.sha256()
-
-    handle = ctypes.windll.kernel32.CreateFileW(
-        f"\\\\.\\{disk}",
-        0x80000000,  # GENERIC_READ
-        0x00000001 | 0x00000002,  # FILE_SHARE_READ | FILE_SHARE_WRITE
-        None,
-        0x00000003,  # OPEN_EXISTING
-        0,
-        None
-    )
-
-    if handle == ctypes.c_void_p(-1).value:
-        raise Exception(f"Failed to open disk {disk}")
-
-    buffer = ctypes.create_string_buffer(4096)
-    bytes_read = ctypes.c_ulong(0)
-
-    while ctypes.windll.kernel32.ReadFile(handle, buffer, len(buffer), ctypes.byref(bytes_read), None):
-        if bytes_read.value == 0:
-            break
-        data = buffer.raw[:bytes_read.value]
-        hash_md5.update(data)
-        hash_sha1.update(data)
-        hash_sha256.update(data)
-
-    ctypes.windll.kernel32.CloseHandle(handle)
-
-    return hash_md5.hexdigest(), hash_sha1.hexdigest(), hash_sha256.hexdigest()
-
-# Copy block from physical disk
 def read_physical_disk(disk, block_size, offset):
+    """Read a block of specified size from the physical disk at the given offset."""
     handle = ctypes.windll.kernel32.CreateFileW(
         f"\\\\.\\{disk}",
         0x80000000,  # GENERIC_READ
@@ -129,6 +64,7 @@ def read_physical_disk(disk, block_size, offset):
     if handle == ctypes.c_void_p(-1).value:
         raise Exception(f"Failed to open disk {disk}")
 
+    # Move the file pointer to the correct position using SetFilePointerEx
     offset_high = ctypes.c_long(offset >> 32)
     offset_low = ctypes.c_long(offset & 0xFFFFFFFF)
     result = ctypes.windll.kernel32.SetFilePointerEx(handle, offset_low, ctypes.byref(offset_high), 0)
@@ -154,8 +90,8 @@ def read_physical_disk(disk, block_size, offset):
 
     return read_buffer.raw[:read.value], read.value
 
-# Format speed in human-readable format
 def format_speed(bytes_per_second):
+    """Format the speed to be human-readable."""
     units = ["B/s", "KB/s", "MB/s", "GB/s"]
     speed = bytes_per_second
     unit = units[0]
@@ -166,13 +102,12 @@ def format_speed(bytes_per_second):
         speed /= 1024
     return f"{speed:.2f} {unit}"
 
-# Format time in HH:MM:SS format
 def format_time(seconds):
+    """Format seconds into HH:MM:SS format."""
     hours, remainder = divmod(seconds, 3600)
     minutes, seconds = divmod(remainder, 60)
     return f"{int(hours):02}:{int(minutes):02}:{int(seconds):02}"
 
-# Main process
 def main():
     # ASCII art header
     header = pyfiglet.figlet_format("Disk Copy Tool")
@@ -200,23 +135,6 @@ def main():
 
     selected_disk, disk_model = disks[choice]
 
-    # Calculate hash of the original drive
-    original_hashes = get_drive_hash(selected_disk)
-    print(Fore.CYAN + "Original Drive Hashes:")
-    print(f"MD5: {original_hashes[0]}")
-    print(f"SHA1: {original_hashes[1]}")
-    print(f"SHA256: {original_hashes[2]}")
-
-    # Enable/Disable write protection
-    write_protect = input(Fore.YELLOW + "Enable write protection? (Y/N): ").strip().lower()
-    if write_protect == 'y':
-        set_write_protect(True)
-    else:
-        set_write_protect(False)
-
-    # Check write protection status
-    check_write_protection()
-
     # Prompt for the directory path to save the image file
     directory_path = input(Fore.YELLOW + "Enter the directory path to save the image file: ")
 
@@ -225,13 +143,11 @@ def main():
         print(Fore.RED + "The specified directory does not exist.")
         return
 
-    # Choose the image format (E01 or DD)
-    image_format = input(Fore.YELLOW + "Choose the output format (E01/DD): ").strip().lower()
-
-    save_file_name = f"{disk_model.replace(' ', '_').replace('/', '_')}.{image_format}"
+    # Create the full save file path with the disk model as the file name
+    save_file_name = f"{disk_model.replace(' ', '_').replace('/', '_')}.img"
     save_file_path = os.path.join(directory_path, save_file_name)
 
-    block_size = 8 * 1024 * 1024  # 8 MB blocks
+    block_size = 512 * 512  # 256 sectors * 512 bytes per sector
 
     # Get the disk size
     disk_size = get_disk_size(selected_disk)
@@ -244,36 +160,30 @@ def main():
     def copy_block(offset):
         return read_physical_disk(selected_disk, block_size, offset)
 
-    # Create the image file
+    # Copy the disk to the image file
     try:
         with open(save_file_path, 'wb') as img_file:
             start_time = time.time()
             total_read = 0
-
             with ThreadPoolExecutor() as executor:
-                for offset in range(0, total_sectors * 512, block_size):
-                    block_data, bytes_read = copy_block(offset)
-                    if block_data is None:
-                        continue
-                    img_file.write(block_data)
-                    total_read += bytes_read
-
-            end_time = time.time()
-            total_time = end_time - start_time
-
-            # Calculate the hashing for the image created
-            created_hashes = get_drive_hash(save_file_path)
-            print(Fore.CYAN + "Image File Hashes:")
-            print(f"MD5: {created_hashes[0]}")
-            print(f"SHA1: {created_hashes[1]}")
-            print(f"SHA256: {created_hashes[2]}")
-
-            print(Fore.GREEN + f"Disk image created: {save_file_path}")
-            print(Fore.CYAN + f"Time taken: {format_time(total_time)}")
-            print(Fore.CYAN + f"Data copied: {format_speed(total_read / total_time)}")
-
+                futures = {executor.submit(copy_block, offset): offset for offset in range(0, disk_size, block_size)}
+                for future in futures:
+                    block, read_size = future.result()
+                    if block is not None:
+                        img_file.write(block)
+                        total_read += read_size
+                    current_time = time.time()
+                    elapsed_time = current_time - start_time
+                    if elapsed_time > 0:
+                        speed = total_read / elapsed_time
+                        progress = (total_read / disk_size) * 100
+                        remaining_seconds = (disk_size - total_read) / speed if speed > 0 else 0
+                        print(f"\r{Fore.CYAN}Progress: {progress:.2f}% | Speed: {format_speed(speed)} | "
+                              f"Sectors: {total_read // 512}/{total_sectors} | "
+                              f"ETA: {format_time(remaining_seconds)}", end='')
+        print(Fore.GREEN + f"\nDisk {selected_disk} copied to {save_file_path} successfully.")
     except Exception as e:
-        print(Fore.RED + f"Error: {e}")
+        print(Fore.RED + f"An error occurred: {e}")
 
 if __name__ == "__main__":
     main()
