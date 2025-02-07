@@ -9,6 +9,7 @@ import pyfiglet
 import winreg
 import signal
 import threading
+import psutil  # To get available system RAM
 
 # Check if the script is running as admin
 def is_admin():
@@ -93,6 +94,10 @@ def get_disk_size(disk):
         if d.DeviceID == disk:
             return int(d.Size)
     return 0
+
+def get_ram_size():
+    """Get the system's available RAM in bytes."""
+    return psutil.virtual_memory().available
 
 def read_physical_disk(disk, block_size, offset):
     """Read a block of specified size from the physical disk at the given offset."""
@@ -202,7 +207,12 @@ def main():
     save_file_name = f"{disk_model.replace(' ', '_').replace('/', '_')}.img"
     save_file_path = os.path.join(directory_path, save_file_name)
 
-    block_size = 512 * 512  # 256 sectors * 512 bytes per sector
+    # Determine block size based on RAM size
+    ram_size = get_ram_size()
+    if ram_size < 6 * 1024**3:  # Less than 6GB of RAM
+        block_size = 16 * 1024 * 1024  # 16MB
+    else:
+        block_size = 256 * 1024 * 1024  # 256MB
 
     # Get the disk size
     disk_size = get_disk_size(selected_disk)
