@@ -160,7 +160,7 @@ def format_time(seconds):
 
 def main():
     # ASCII art header
-    header = pyfiglet.figlet_format("Disk Copy Tool")
+    header = pyfiglet.figlet_format("NIST Disk Imager")
     print(Fore.YELLOW + header)
 
     # Show credit line
